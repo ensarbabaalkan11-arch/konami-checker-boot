@@ -15,7 +15,7 @@ from datetime import datetime
 # ─────────────────────────────────────────────
 #  KONFİGÜRASYON
 # ─────────────────────────────────────────────
-BOT_TOKEN = os.getenv("BOT_TOKEN", "BURAYA_TOKEN_YAZ")
+BOT_TOKEN = os.getenv(8879666700:AAGfBfwt7SnvFPusfW82cnBaKu2JwhZG68Y)
 ADMIN_ID  = 7969180514
 
 HITS_FILE   = "Roblox-Hits.txt"
