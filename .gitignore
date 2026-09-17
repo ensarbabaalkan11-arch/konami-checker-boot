@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Checker özel dosyaları
+combo_*.txt
+proxy_*.txt
+Roblox-Hits.txt
+Hotmail-Custom.txt
+*.log
+session_*
