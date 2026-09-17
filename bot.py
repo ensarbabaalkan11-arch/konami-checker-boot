@@ -22,7 +22,7 @@ HITS_FILE   = "Roblox-Hits.txt"
 CUSTOM_FILE = "Hotmail-Custom.txt"
 
 MAX_RETRIES  = 5
-THREAD_COUNT = 10
+THREAD_COUNT = 3
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
